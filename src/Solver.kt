@@ -43,7 +43,7 @@ private fun mapDoublePossibilities(findValue: Int, hand: List<Domino>, parentNod
     findBestNode(parentNode).apply {
         var top = this
 
-        while (top.parent!! != parentNode) {
+        while (top.parent != null && top.parent != parentNode) {
             top = top.parent!!
         }
 
