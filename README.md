@@ -1,0 +1,1 @@
+This is a simple Mexican Train Solver that can generate hands or solve yours!
