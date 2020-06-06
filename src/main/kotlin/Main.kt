@@ -14,7 +14,7 @@ fun generateDomino(hand: List<Domino>, mainDomino: Domino): Domino {
 
 fun generateHand(handSize: Int, mainDomino: Domino): List<Domino> {
     return mutableListOf<Domino>().apply {
-        for (i in 0..handSize)
+        for (i in 0 until handSize)
             this.add(generateDomino(this, mainDomino))
     }.toList()
 }

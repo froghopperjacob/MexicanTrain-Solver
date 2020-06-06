@@ -1,6 +1,3 @@
-import java.lang.RuntimeException
-import java.time.LocalDateTime
-
 private fun findDeepestNodes(nodeParent: Node): List<Node> {
     val nodes = mutableListOf<Node>()
 
@@ -48,64 +45,11 @@ private fun mapDoublePossibilities(findValue: Int, hand: List<Domino>, parentNod
             top = top.parent!!
         }
 
-        fun newCandidate(domino: Domino, flip: Boolean) {
-            val dominoCopy = if (flip)
-                domino.flip()
-            else
-                domino.copy()
-
-            parentNode.addCandidate(
-                    top.fullCopy(),
-                    dominoCopy,
-                    this.hand.toMutableList().also {
-                        it.remove(domino)
-                    }
-            )
-        }
-
-        fun addBothOptions(domino: Domino) {
-            for (i in 0..1) {
-                newCandidate(domino, i == 1)
-            }
-        }
-
-        if (this.hand.isNotEmpty()) {
-            for (handDomino in this.hand) {
-                if (findValue == 0) {
-                    addBothOptions(handDomino)
-                } else {
-                    if (handDomino.canUseValue(findValue)) {
-                        if (handDomino.hasWild) {
-                            if (handDomino.canUseValueWithoutWild(findValue)) {
-                                addBothOptions(handDomino)
-                            } else { // Has to use wild
-                                newCandidate(handDomino, handDomino.leftValue != 0)
-                            }
-                        } else {
-                            newCandidate(handDomino, handDomino.leftValue != findValue)
-                        }
-                    }
-                }
-            }
-
-            for (candidate in parentNode.candidates) {
-                if (candidate.branch2 != null) {
-                    mapPossibilities(
-                            candidate.branch2.mainDomino.rightValue,
-                            candidate.branch2.hand,
-                            candidate.branch2,
-                            candidate.branch2.mainDomino.isDouble
-                    )
-                }
-            }
-        }
+        mapPossibilities(findValue, this.hand, parentNode, fromDouble = true, topNode = top)
     }
 }
 
-private fun mapPossibilities(findValue: Int, hand: List<Domino>, parentNode: Node, isDouble: Boolean = false) {
-    if (isDouble)
-        return mapDoublePossibilities(findValue, hand, parentNode)
-
+private fun mapPossibilities(findValue: Int, hand: List<Domino>, parentNode: Node, fromDouble: Boolean = false, topNode: Node? = null) {
     fun newNode(domino: Domino, flip: Boolean) {
         domino.copy().apply {
             var useDomino = this
@@ -113,13 +57,22 @@ private fun mapPossibilities(findValue: Int, hand: List<Domino>, parentNode: Nod
             if (flip)
                 useDomino = this.flip()
 
-            parentNode.addCandidate(
-                    useDomino,
-                    null,
-                    hand.toMutableList().also {
-                        it.remove(domino)
-                    }
-            )
+            if (!fromDouble)
+                parentNode.addCandidate(
+                        useDomino,
+                        null,
+                        hand.toMutableList().also {
+                            it.remove(domino)
+                        }
+                )
+            else
+                parentNode.addCandidate(
+                        topNode!!.fullCopy(),
+                        useDomino,
+                        hand.toMutableList().also {
+                            it.remove(domino)
+                        }
+                )
         }
     }
 
@@ -148,81 +101,68 @@ private fun mapPossibilities(findValue: Int, hand: List<Domino>, parentNode: Nod
     }
 
     for (candidate in parentNode.candidates) {
-        mapPossibilities(
-                candidate.branch1.mainDomino.rightValue,
-                candidate.branch1.hand,
-                candidate.branch1,
-                candidate.branch1.mainDomino.isDouble
-        )
+        var useBranch: Node? = candidate.branch1
+
+        if (fromDouble)
+            useBranch = candidate.branch2
+
+        if (!fromDouble || candidate.branch2 != null)
+            if (!candidate.branch1.mainDomino.isDouble)
+                mapPossibilities(
+                        useBranch!!.mainDomino.rightValue,
+                        useBranch.hand,
+                        useBranch
+                )
+            else
+                mapDoublePossibilities(
+                        useBranch!!.mainDomino.rightValue,
+                        useBranch.hand,
+                        useBranch
+                )
     }
 }
 
-fun findBestUsage(root: Node): Pair<Node, Int> {
-    val newRoot = Node(root.mainDomino.leftValue, root.hand)
-    var bestHandSize: Int? = null
+private fun cleanNodeToBest(root: Node): Pair<Node, Int> {
+    val bestNode = findBestNode(root)
+    var useNode = bestNode
 
-    fun createTree(addToTop: Node, addFrom: Node, isRoot: Boolean = false) {
-        val bestNode = findBestNode(addFrom)
+    while (useNode.parent != null) {
+        val useNodeParent = useNode.parent!!
+        val findCandidate = useNodeParent.findCandidateExact(useNode)
+        val removeIndexes = arrayOfNulls<Candidate>(useNodeParent.candidates.size)
+        var removeIndexIndex = 0
 
-        if (isRoot)
-            bestHandSize = bestNode.hand.size
-
-        if (bestNode.parent == null)
-            throw RuntimeException("The best node is root")
-
-        var useNode = bestNode
-
-        val candidates = mutableListOf<Candidate>()
-        val doubleNodes = mutableListOf<Node?>()
-
-        while (useNode.parent != null && useNode.parent != addFrom.parent) {
-            val candidate = useNode.parent!!.findCandidateExact(useNode)
-
-            candidates.add(candidate.copy())
-
-            if(candidate.branch2 != null) {
-                if (candidate.branch1.candidates.size > 0)
-                    doubleNodes.add(candidate.branch1)
-                else
-                    doubleNodes.add(null)
-            }
-
-            useNode = useNode.parent!!
-        }
-
-        var addTo = addToTop
-        var doubleNodeIndex = doubleNodes.size - 1
-
-        for (candidateIndex in candidates.size - 1 downTo 0) {
-            val candidate = candidates[candidateIndex]
-
-            addTo.candidates.add(candidate)
-
-            addTo = candidate.branch1
-
-            if (candidate.branch2 != null) {
-                val doubleNode = doubleNodes[doubleNodeIndex]
-
-                if (doubleNode != null) {
-                    createTree(candidate.branch1, doubleNode)
+        for (candidateCompare in useNodeParent.candidates) {
+            if (candidateCompare.branch1 == findCandidate.branch1) {
+                if (candidateCompare.branch2 == null && findCandidate.branch2 == null) {
+                    continue
+                } else if (candidateCompare.branch2 != null && findCandidate.branch2 != null) {
+                    if (candidateCompare.branch2 == findCandidate.branch2) {
+                        continue
+                    }
                 }
+            }
 
-                doubleNodeIndex--
+            removeIndexes[removeIndexIndex] = candidateCompare
+            removeIndexIndex++
+        }
 
-                addTo = candidate.branch2
+        for (removeCandidate in removeIndexes) {
+            if (removeCandidate != null) {
+                useNodeParent.candidates.remove(removeCandidate)
             }
         }
+
+        useNode = useNodeParent
     }
 
-    createTree(newRoot, root, isRoot = true)
-
-    return Pair(newRoot, bestHandSize!!)
+    return Pair(root, bestNode.hand.size)
 }
 
 fun solve(mainValue: Int, hand: List<Domino>): Pair<Node, Int> {
     return Node(mainValue, hand).run {
         mapPossibilities(mainValue, hand, this)
 
-        findBestUsage(this)
+        cleanNodeToBest(this)
     }
 }

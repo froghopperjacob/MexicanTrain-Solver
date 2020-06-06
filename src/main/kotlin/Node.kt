@@ -42,14 +42,19 @@ class Node(val mainDomino: Domino, val hand: List<Domino>, val parent: Node? = n
     fun findCandidateExact(node: Node): Candidate {
         return candidates.first {
             candidate ->
-                ((candidate.branch1 == node) && (candidate.branch1.candidates == node.candidates)) ||
-                    ((candidate.branch2 == node) && (candidate.branch2.candidates == node.candidates))
+                candidate.branch1 == node ||
+                        if (candidate.branch2 != null) {
+                            candidate.branch2 == node
+                        } else {
+                            false
+                        }
         }
     }
 
     override fun equals(other: Any?): Boolean {
         return if (other is Node) {
-            other.mainDomino == this.mainDomino && other.parent == this.parent
+            this.mainDomino === other.mainDomino && this.hand === other.hand &&
+                    this.candidates === other.candidates && this.parent === other.parent
         } else {
             super.equals(other)
         }
